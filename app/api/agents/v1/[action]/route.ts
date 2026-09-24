@@ -31,7 +31,8 @@ import {
   AUTHORITY_LEVELS, REGISTRY_SCHEMA_VERSION, authorizeAction, defaultLimits,
   evaluateRegistrationReplay, revokeAgent, type AgentRecord, type AgentCapability,
 } from "@/lib/agents/registry";
-import { auditAgentRequest, consumeNonce, loadAgent, loadIdempotentResponse, saveAgent, saveIdempotentResponse } from "@/lib/agents/store";
+import { auditAgentRequest, loadAgent, loadIdempotentResponse, saveAgent, saveIdempotentResponse } from "@/lib/agents/store";
+import { rejectReplayedSignedEnvelope } from "@/lib/agents/envelope-replay";
 import { buildAgentDryRun } from "@/lib/agents/dry-run";
 import { isFeatureEnabled, checkWriteAllowed, type Pausable } from "@/lib/ops/flags";
 import { getUsdcBalanceUnits, usdcToUnits, parseUsdcAtomic } from "@/lib/usdc";
@@ -150,8 +151,14 @@ async function register(request: SignedAgentRequest<Record<string, any>>): Promi
     }, 409);
   }
 
-  if (!(await consumeNonce(request.agentId, request.nonce, Date.now()))) {
-    return json({ error: { message: "nonce replay" } }, 409);
+  const registerReplay = await rejectReplayedSignedEnvelope({
+    agentId: request.agentId,
+    nonce: request.nonce,
+    signedAt: request.signedAt,
+  });
+  if (registerReplay) {
+    await audit(request, "rejected", "nonce_replay");
+    return errorResponse(registerReplay);
   }
   const now = Date.now();
   const authority = Math.max(0, Math.min(4, Math.floor(Number(body.authorityLevel ?? 0)))) as AgentRecord["authorityLevel"];
@@ -273,9 +280,14 @@ export async function POST(req: Request, context: { params: Promise<{ action: st
   }
   const prior = await loadIdempotentResponse(agent.agentId, action, request.idempotencyKey);
   if (prior) return json(prior.body, prior.status);
-  if (!(await consumeNonce(agent.agentId, request.nonce, Date.now()))) {
+  const replayed = await rejectReplayedSignedEnvelope({
+    agentId: agent.agentId,
+    nonce: request.nonce,
+    signedAt: request.signedAt,
+  });
+  if (replayed) {
     await audit(request, "rejected", "nonce_replay");
-    return json({ error: { message: "nonce replay" } }, 409);
+    return errorResponse(replayed);
   }
 
   const body = (request.body ?? {}) as Record<string, any>;

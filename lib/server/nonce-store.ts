@@ -53,6 +53,7 @@
  */
 
 import { AGENT_REQUEST_MAX_SKEW_MS } from "@/lib/agents/api";
+import { isFeatureEnabled } from "@/lib/ops/flags";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -180,6 +181,13 @@ export async function consumeNonce(
 
   // Fast path: same instance, already seen.
   if (_nonceCache.has(cacheKey)) return false;
+
+  // Operational kill-switch: MIMIR_FEATURE_NONCE_PERSISTENCE=0 reverts to the
+  // in-process-only gate (loses cross-instance / restart protection). Default ON.
+  if (!isFeatureEnabled("nonce_persistence")) {
+    cacheNonce(cacheKey);
+    return true;
+  }
 
   // Durable path: DB INSERT ON CONFLICT. This is the atomic gate for
   // cross-instance replay prevention.

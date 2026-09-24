@@ -274,3 +274,18 @@ test("boundary: skew window is covered by nonce TTL with margin", () => {
     "TTL should be at least 2× the skew window",
   );
 });
+
+test("regression: MIMIR_FEATURE_NONCE_PERSISTENCE=0 uses in-process only", async () => {
+  clearCache();
+  const prev = process.env.MIMIR_FEATURE_NONCE_PERSISTENCE;
+  try {
+    process.env.MIMIR_FEATURE_NONCE_PERSISTENCE = "0";
+    const nonce = freshNonce("flag-off");
+    assert.equal(await consumeNonce(AGENT, nonce, NOW), true);
+    assert.equal(await consumeNonce(AGENT, nonce, NOW), false, "same-instance replay still blocked");
+  } finally {
+    if (prev === undefined) delete process.env.MIMIR_FEATURE_NONCE_PERSISTENCE;
+    else process.env.MIMIR_FEATURE_NONCE_PERSISTENCE = prev;
+    clearCache();
+  }
+});

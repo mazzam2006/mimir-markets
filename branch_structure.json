@@ -1,0 +1,33 @@
+{
+  "default_branch": "main",
+  "branches": [
+    "feat/issue-36-feat-api-cap-signed-request-payload-size",
+    "feat/issue-44-feat-api-add-an-rpc-fallback-policy-for-proof",
+    "feat/reject-replayed-signed-envelopes",
+    "fix/issue-36-cap-signed-payload",
+    "fix/issue-44-rpc-fallback-proof-verification",
+    "fix/versioned-verdict-encoding",
+    "main",
+    "origin"
+  ],
+  "parent": {
+    "feat/issue-36-feat-api-cap-signed-request-payload-size": "main",
+    "feat/issue-44-feat-api-add-an-rpc-fallback-policy-for-proof": "main",
+    "feat/reject-replayed-signed-envelopes": "main",
+    "fix/issue-36-cap-signed-payload": "main",
+    "fix/issue-44-rpc-fallback-proof-verification": "main",
+    "fix/versioned-verdict-encoding": "main",
+    "main": null,
+    "origin": "main"
+  },
+  "order": [
+    "main",
+    "feat/issue-36-feat-api-cap-signed-request-payload-size",
+    "feat/issue-44-feat-api-add-an-rpc-fallback-policy-for-proof",
+    "feat/reject-replayed-signed-envelopes",
+    "fix/issue-36-cap-signed-payload",
+    "fix/issue-44-rpc-fallback-proof-verification",
+    "fix/versioned-verdict-encoding",
+    "origin"
+  ]
+}

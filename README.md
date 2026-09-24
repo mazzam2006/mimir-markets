@@ -820,8 +820,13 @@ mimir-markets/
 │   ├── x402-stellar-smoke.ts             # payment-scheme smoke against live Testnet
 │   ├── demo-full-cycle.ts                # full create -> challenge -> settle in 90s
 │   ├── seed-claims.ts                    # bulk-seed demo markets
+│   ├── run-browser-smoke.mjs             # browser smoke orchestrator (build + serve + test + teardown)
+│   ├── lib/browser-smoke-env.mjs         # secret-free env allowlist for the smoke build
 │   └── warm-vs-index.ts                  # rebuild Neon cache from on-chain
-└── tests/node/                           # node:test unit + integration suites
+├── playwright.config.ts                  # browser-smoke config (system Chrome, no browser download)
+└── tests/
+    ├── node/                             # node:test unit + integration suites
+    └── browser/                          # Playwright browser smoke suite (npm run smoke:browser)
 ```
 
 ---
@@ -897,6 +902,24 @@ AUTO_CHALLENGE=1 npm run oracle  # also Kelly-stake on mispriced claims
 npm run market-creator         # opens new markets every 6h
 npm run council                # the ten-persona jury
 ```
+
+### Browser smoke flow
+
+`npm run smoke:browser` builds the app, serves it on `http://127.0.0.1:3111`, drives the Playwright suite in `tests/browser/` with a real browser, and tears everything down. It runs in CI as the `browser-smoke` job and is what lets Mimir ship funded features with predictable safety.
+
+**What it runs:** boot + locale routing + security headers (`boot.spec.ts`), every public page rendering (`pages.spec.ts`), the fail-closed health/feed/analytics endpoints (`health.spec.ts`), wallet-gated money paths (`wallet-mock.spec.ts`), and the `?demo=1` mock create-to-success flow (`demo-create.spec.ts`).
+
+**Environment contract.** The smoke flow is deterministic and secret-free. `scripts/run-browser-smoke.mjs` moves every `.env*` file Next.js reads (`.env`, `.env.local`, `.env.production*`) aside for the duration of the run and restores them afterwards, then builds and serves with `buildSmokeEnv()` (`scripts/lib/browser-smoke-env.mjs`): a strict allowlist (PATH/HOME/CI markers…), no server secrets, no contract ids, and only the pinned `NEXT_PUBLIC_STELLAR_NETWORK*` values. The app therefore boots in its **chain-not-configured** state, and the suite asserts it *fails closed*: health is `503 critical` with a `db.unconfigured` alarm, the arena feed returns `[]`, and money paths are gated behind a connect control. A served page matching a secret pattern fails the run.
+
+**Browser.** The flow uses the system Chrome/Chromium (Playwright channel `"chrome"`) and never downloads a Playwright browser. Point it at a specific binary with `SMOKE_CHROME_PATH=/path/to/chrome`.
+
+```bash
+npm run smoke:browser                        # full cycle build + serve + test + teardown
+npm run smoke:browser -- --skip-build        # reuse an existing .next build (fast iteration)
+npm run smoke:browser -- --filter boot       # run only the boot spec
+```
+
+**Failure, rollback and artifacts.** On failure the run prints where to look, restores the moved `.env*` files and kills the server, and CI uploads `playwright-report/` + `test-results/` for 7 days. Every mode of the runner tears down cleanly, so a developer can always rerun exactly what CI ran with one command: `npm run smoke:browser`.
 
 ---
 

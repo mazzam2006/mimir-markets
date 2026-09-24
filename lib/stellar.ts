@@ -123,6 +123,15 @@ export function getHorizonUrl(): string {
   );
 }
 
+/**
+ * Optional comma-separated Horizon mirrors for proof-verification fallback.
+ * Server-only — browser code keeps talking to the single public primary URL.
+ */
+export function getHorizonFallbackUrlsRaw(): string | undefined {
+  if (typeof window !== "undefined") return undefined;
+  return cleanEnv(process.env.STELLAR_HORIZON_FALLBACK_URLS);
+}
+
 // ── Contract ids ──────────────────────────────────────────────────────────────
 
 /**

@@ -82,7 +82,11 @@ import {
   X402_PAYMENT_MAX_AGE_MS,
   X402_SCHEME,
 } from "./config";
-import { createHorizonServer, isAccountAddress } from "../stellar";
+import { createHorizonServer, getHorizonFallbackUrlsRaw, getHorizonUrl, isAccountAddress } from "../stellar";
+import {
+  readWithHorizonFallback,
+  resolveProofVerificationHorizonUrls,
+} from "./rpc-fallback";
 import { USDC_DECIMALS, formatAtomicUsdc, parseUsdcAtomic } from "../usdc";
 import { transferUsdc, type AgentWallet } from "../agent-wallets";
 
@@ -301,16 +305,30 @@ export async function verifyStellarPayment(
     };
   }
 
-  const horizon = createHorizonServer();
-  let createdAt: number;
-  let successful: boolean;
-  try {
-    const tx = await horizon.transactions().transaction(proof.transaction).call();
-    createdAt = Date.parse(tx.created_at);
-    successful = tx.successful;
-  } catch (cause) {
-    const status = (cause as { response?: { status?: number } })?.response?.status;
-    if (status === 404) {
+  // Horizon may be multi-homed: try primary then configured mirrors under the
+  // RPC fallback policy. A definitive 404 / successful body stops the walk; only
+  // availability failures advance. See `lib/x402/rpc-fallback.ts`.
+  const horizonUrls = resolveProofVerificationHorizonUrls({
+    primaryUrl: getHorizonUrl(),
+    fallbackRaw: getHorizonFallbackUrlsRaw(),
+  });
+
+  const ledgerRead = await readWithHorizonFallback({
+    urls: horizonUrls,
+    read: async (url) => {
+      const horizon = createHorizonServer(url);
+      const tx = await horizon.transactions().transaction(proof.transaction).call();
+      const page = await horizon.operations().forTransaction(proof.transaction).limit(200).call();
+      return {
+        createdAt: Date.parse(tx.created_at),
+        successful: tx.successful as boolean,
+        operations: page.records as unknown as HorizonPaymentOperation[],
+      };
+    },
+  });
+
+  if (!ledgerRead.ok) {
+    if (ledgerRead.reason === "not_found") {
       return {
         ok: false,
         reason: "transaction_not_found",
@@ -320,9 +338,11 @@ export async function verifyStellarPayment(
     return {
       ok: false,
       reason: "horizon_unavailable",
-      message: `Horizon could not be read: ${cause instanceof Error ? cause.message : String(cause)}`,
+      message: `Horizon could not be read: ${ledgerRead.message}`,
     };
   }
+
+  const { createdAt, successful, operations } = ledgerRead.value;
 
   if (!successful) {
     return {
@@ -340,18 +360,6 @@ export async function verifyStellarPayment(
       ok: false,
       reason: "payment_too_old",
       message: `payment is ${Math.round(age / 1000)}s old, the window is ${Math.round(maxAgeMs / 1000)}s`,
-    };
-  }
-
-  let operations: HorizonPaymentOperation[];
-  try {
-    const page = await horizon.operations().forTransaction(proof.transaction).limit(200).call();
-    operations = page.records as unknown as HorizonPaymentOperation[];
-  } catch (cause) {
-    return {
-      ok: false,
-      reason: "horizon_unavailable",
-      message: `Horizon operations read failed: ${cause instanceof Error ? cause.message : String(cause)}`,
     };
   }
 

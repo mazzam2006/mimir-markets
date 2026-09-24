@@ -37,6 +37,31 @@ See `docs/STELLAR_NETWORK.md` for the one-page architecture reference.
 | `scripts/create-agent-wallets.ts` | Generate 12 keypairs (oracle + creator + 10 personas) |
 | `scripts/fund-agents.ts` | Fund agent accounts from a master seed |
 | `scripts/check-forbidden-terms.mjs` | Guardrail: no pre-Stellar chain or bespoke-402 residue |
+| `scripts/run-browser-smoke.mjs` | Browser smoke orchestrator: build + serve + test + teardown in a secret-free env |
+| `scripts/lib/browser-smoke-env.mjs` | The smoke harness's strict env allowlist (what a smoke build may see) |
+| `tests/browser/` + `playwright.config.ts` | Playwright browser smoke suite (run via `npm run smoke:browser`) |
+
+## Browser smoke flow (must stay green on release)
+
+`npm run smoke:browser` builds the app with a **secret-free allowlist**, serves it
+locally, drives the Playwright suite in `tests/browser/` with the system
+Chrome/Chromium, and tears down. CI runs it as the `browser-smoke` job. When you
+add a page, a wallet gate, or an env-read, keep it green:
+
+- **Never let real settings into the smoke build.** The harness moves every
+  `.env*` file aside during the run and builds with only `buildSmokeEnv()` keys.
+  If the app needs a new `NEXT_PUBLIC_*` value to even build, add it to
+  `SMOKE_NEXT_PUBLIC` **and** its regression test — but that must be a value that
+  is safe to ship to the browser in every build.
+- **Assert the unconfigured state, not a live one.** The smoke run has no DB, no
+  contract ids, no secrets. It pins fail-closed behavior: health 503 `critical` /
+  `db.unconfigured`, empty arena feed, money paths gated behind a connect control.
+  Do not add an assertion that depends on a live deployment.
+- **New public pages go into `tests/browser/pages.spec.ts`** with a signature
+  heading marker from `messages/en.json`.
+- **New secret-shaped env vars**: if you add one, confirm it is **not** in the
+  smoke allowlist; add it to the secret samples in `tests/node/browser-smoke-env.test.ts`.
+- Run it before finishing a release-touching PR: `npm run smoke:browser`.
 
 ## Key rules
 

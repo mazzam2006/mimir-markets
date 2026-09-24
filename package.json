@@ -7,15 +7,15 @@
     "node": ">=22.0.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "node api.js && next dev",
     "dev:clean": "rm -rf .next && next dev",
     "clean": "rm -rf .next",
-    "build": "next build",
+    "build": "node api.js && next build",
     "typecheck": "tsc --noEmit",
     "check:terms": "node scripts/check-forbidden-terms.mjs",
     "sbom:release": "node scripts/generate-release-sbom.mjs",
     "test:contracts": "cargo test --manifest-path contracts-soroban/Cargo.toml --release",
-    "start": "next start",
+    "start": "node api.js && next start",
     "oracle": "tsx --env-file-if-exists=.env.local agents/oracle/index.ts",
     "oracle:challenge": "AUTO_CHALLENGE=1 tsx --env-file-if-exists=.env.local agents/oracle/index.ts",
     "market-creator": "tsx --env-file-if-exists=.env.local agents/market-creator/index.ts",
@@ -43,6 +43,7 @@
     "smoke:x402:http": "tsx --env-file-if-exists=.env.local scripts/x402-http-smoke.ts",
     "smoke:onchain": "tsx --env-file-if-exists=.env.local scripts/onchain-smoke.ts",
     "smoke:onchain:full": "tsx --env-file-if-exists=.env.local scripts/onchain-smoke.ts --resolve --squad",
+    "smoke:browser": "node scripts/run-browser-smoke.mjs",
     "test:smoke": "node scripts/run-node-tests.mjs",
     "test:research": "node --import tsx --test tests/node/research-adapters.test.ts tests/node/categories.test.ts tests/node/context-pack.test.ts tests/node/research-ssrf.test.ts tests/node/research-redirects.test.ts tests/node/source-fallback.test.ts tests/node/research-gateway.test.ts tests/node/x402-discovery.test.ts tests/node/evidence-fetcher-redirects.test.ts",
     "test:squad": "node --import tsx --test tests/node/squad-view.test.ts tests/node/squad-pool.test.ts",
@@ -80,6 +81,7 @@
     "ws": "^8.20.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/node": "^20",
     "@types/react": "^18",
     "@types/react-dom": "^18",

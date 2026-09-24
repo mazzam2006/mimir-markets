@@ -45,6 +45,10 @@ coverage/
 __pycache__/
 *.pyc
 
+# Browser smoke suite artifacts (playwright.config.ts writes these)
+test-results/
+playwright-report/
+
 # ========================
 # Logs
 # ========================

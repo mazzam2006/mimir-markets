@@ -11,7 +11,8 @@ import {
 } from "@/lib/stellar";
 import { publishReasoning } from "@/lib/reasoning/publish";
 import {
-  AGENT_API_ACTIONS, AGENT_API_VERSION, agentRequestMessage, validateAgentRequestEnvelope,
+  AGENT_API_ACTIONS, AGENT_API_VERSION, MAX_SIGNED_REQUEST_PAYLOAD_BYTES,
+  agentRequestMessage, validateAgentRequestEnvelope,
   type AgentApiAction, type SignedAgentRequest,
 } from "@/lib/agents/api";
 import { authenticateAgentRequest, requiresOwnerSignature } from "@/lib/agents/authenticate";
@@ -139,8 +140,24 @@ export async function POST(req: Request, context: { params: Promise<{ action: st
   const { action: rawAction } = await context.params;
   if (!(AGENT_API_ACTIONS as readonly string[]).includes(rawAction)) return json({ error: { message: "unknown action" } }, 404);
   const action = rawAction as AgentApiAction;
+  // Cap before parse: Content-Length is a cheap fail-closed gate; the body byte
+  // check below still applies when the header is absent or wrong.
+  const declared = Number(req.headers.get("content-length") ?? NaN);
+  if (Number.isFinite(declared) && declared > MAX_SIGNED_REQUEST_PAYLOAD_BYTES) {
+    return json({
+      error: { message: `payload exceeds ${MAX_SIGNED_REQUEST_PAYLOAD_BYTES} bytes` },
+    }, 413);
+  }
+  let raw: string;
+  try { raw = await req.text(); }
+  catch { return json({ error: { message: "invalid body" } }, 400); }
+  if (new TextEncoder().encode(raw).length > MAX_SIGNED_REQUEST_PAYLOAD_BYTES) {
+    return json({
+      error: { message: `payload exceeds ${MAX_SIGNED_REQUEST_PAYLOAD_BYTES} bytes` },
+    }, 413);
+  }
   let request: SignedAgentRequest;
-  try { request = (await req.json()) as SignedAgentRequest; }
+  try { request = JSON.parse(raw) as SignedAgentRequest; }
   catch { return json({ error: { message: "invalid JSON" } }, 400); }
 
   // An API-key caller writes plain HTTP: `{ "body": {...} }` with the action in the

@@ -10,7 +10,7 @@ use crate::resolve;
 use crate::storage;
 use crate::types::{
     Challenger, ChallengerPage, Claim, ClaimFeeView, CreateParams, Error, FeePolicy, MarketConfig,
-    PayoutQuote, PendingFeePolicy, PlatformStats, WinnerSide,
+    PayoutQuote, PendingFeePolicy, PlatformStats, Verdict, WinnerSide,
 };
 
 #[contract]
@@ -99,6 +99,28 @@ impl MimirMarket {
         resolve::resolve_claim(&env, claim_id, winner_side, summary, confidence, evidence_hash)
     }
 
+    /// Versioned verdict entry point. Identical settlement semantics to
+    /// `resolve_claim`, but the oracle submits a `Verdict` carrying its explicit
+    /// encoding version. Unknown versions are refused with
+    /// `Error::UnsupportedVerdictVersion` and leave the claim untouched.
+    pub fn resolve_claim_versioned(
+        env: Env,
+        claim_id: u64,
+        verdict: Verdict,
+        summary: String,
+        confidence: u32,
+        evidence_hash: BytesN<32>,
+    ) -> Result<(), Error> {
+        resolve::resolve_claim_versioned(
+            &env,
+            claim_id,
+            &verdict,
+            summary,
+            confidence,
+            evidence_hash,
+        )
+    }
+
     
     pub fn transition_deadline(env: Env, claim_id: u64) -> Result<(), Error> {
         claims::transition_deadline(&env, claim_id)
@@ -139,6 +161,20 @@ impl MimirMarket {
 
     pub fn get_claim(env: Env, claim_id: u64) -> Result<Claim, Error> {
         storage::get_claim(&env, claim_id)
+    }
+
+    /// The claim's verdict with its explicit encoding version.
+    ///
+    /// Refuses with `Error::UnsupportedVerdictVersion` if the stored verdict was
+    /// written by an encoding this contract does not understand, and with
+    /// `Error::ClaimNotResolved` if the claim has not been resolved.
+    pub fn get_verdict(env: Env, claim_id: u64) -> Result<Verdict, Error> {
+        resolve::get_verdict(&env, claim_id)
+    }
+
+    /// Convenience view returning only the decoded verdict side.
+    pub fn get_verdict_side(env: Env, claim_id: u64) -> Result<WinnerSide, Error> {
+        resolve::get_verdict(&env, claim_id)?.decode()
     }
 
     pub fn get_claim_market_config(env: Env, claim_id: u64) -> Result<MarketConfig, Error> {

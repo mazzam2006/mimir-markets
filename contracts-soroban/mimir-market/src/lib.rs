@@ -37,3 +37,5 @@ mod test_lifecycle;
 mod test_pagination;
 #[cfg(test)]
 mod test_settlement;
+#[cfg(test)]
+mod test_verdict;

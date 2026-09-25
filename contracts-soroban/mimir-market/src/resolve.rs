@@ -24,13 +24,34 @@ use crate::escrow;
 use crate::events;
 use crate::fees;
 use crate::storage;
-use crate::types::{Challenger, Claim, ClaimState, Error, PayoutQuote, WinnerSide};
+use crate::types::{Challenger, Claim, ClaimState, Error, PayoutQuote, Verdict, WinnerSide};
 use crate::util;
 
 pub fn resolve_claim(
     env: &Env,
     claim_id: u64,
     winner_side: WinnerSide,
+    summary: String,
+    confidence: u32,
+    evidence_hash: BytesN<32>,
+) -> Result<(), Error> {
+    resolve_claim_versioned(
+        env,
+        claim_id,
+        &Verdict::current(winner_side),
+        summary,
+        confidence,
+        evidence_hash,
+    )
+}
+
+/// Versioned entry point. The verdict's encoding version is validated before
+/// any state is touched, so an unknown version fails closed with the claim left
+/// exactly as it was and the escrow untouched.
+pub fn resolve_claim_versioned(
+    env: &Env,
+    claim_id: u64,
+    verdict: &Verdict,
     summary: String,
     confidence: u32,
     evidence_hash: BytesN<32>,
@@ -44,9 +65,9 @@ pub fn resolve_claim(
     if env.ledger().timestamp() < claim.deadline {
         return Err(Error::NotYetExpired);
     }
-    if winner_side == WinnerSide::None {
-        return Err(Error::InvalidVerdict);
-    }
+    // Decode first: an unknown version must never be written, and `None` is not
+    // a settled verdict. Both refusals leave the claim untouched.
+    let winner_side = verdict.decode()?;
     if confidence > 100 {
         return Err(Error::InvalidConfidence);
     }
@@ -114,6 +135,9 @@ pub fn resolve_claim(
 
     let dust = inflow - paid - taken_fees - claim.remaining_escrow;
     storage::set_claim(env, claim_id, &claim);
+    // Persist the verdict with its explicit version tag. `claim.winner_side`
+    // remains the compatibility mirror for callers that read the claim struct.
+    storage::set_verdict(env, claim_id, verdict);
     storage::bump_total_resolved(env);
 
     events::MarketSettled {
@@ -132,7 +156,34 @@ pub fn resolve_claim(
         evidence_hash,
     }
     .publish(env);
+    events::VerdictEncoded {
+        id: claim_id,
+        version: verdict.version,
+        winner_side,
+    }
+    .publish(env);
     Ok(())
+}
+
+/// The verdict for a resolved claim, decoded through its explicit version tag.
+///
+/// Read path:
+///   * a stored versioned verdict is validated and returned, so an unknown
+///     future version is refused instead of reinterpreted;
+///   * a claim with no versioned record (resolved before verdicts were
+///     versioned) falls back to `Claim.winner_side` and is reported as V1.
+pub fn get_verdict(env: &Env, claim_id: u64) -> Result<Verdict, Error> {
+    let claim = storage::get_claim(env, claim_id)?;
+    if let Some(stored) = storage::verdict(env, claim_id) {
+        // Validate on read as well as on write: a stored verdict whose version
+        // this contract does not understand must not be decoded as V1.
+        stored.decode()?;
+        return Ok(stored);
+    }
+    if claim.state != ClaimState::Resolved {
+        return Err(Error::ClaimNotResolved);
+    }
+    Verdict::from_unversioned(claim.winner_side)
 }
 
 // ── Per-challenger pull settlement ───────────────────────────────────────────

@@ -35,6 +35,21 @@ pub struct ClaimResolved {
     pub evidence_hash: BytesN<32>,
 }
 
+/// The versioned verdict written at resolution, emitted alongside
+/// `ClaimResolved`.
+///
+/// `ClaimResolved` keeps its existing shape for compatible indexers; this event
+/// carries the explicit encoding version so consumers can pin the verdict
+/// encoding without a second read or a schema guess.
+#[contractevent]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct VerdictEncoded {
+    #[topic]
+    pub id: u64,
+    pub version: u32,
+    pub winner_side: WinnerSide,
+}
+
 /// The creator's refund of an unchallenged claim. `refund` lets an indexer
 /// reconcile the refund against `creator_stake` and escrow without a second
 /// read; `parked` distinguishes a delivered refund from one parked as a
